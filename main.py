@@ -1,4 +1,7 @@
 import ctypes
+import math
+from math import atan2, pi
+
 import cv2
 import numpy as np
 from pykinect2 import PyKinectV2
@@ -193,6 +196,29 @@ class Baxter:
         self.w1 = 0
         self.w2 = 0
 
+    def calculate_actuator_angles(self):
+        def calculate_joint_angle(l1, l2, dist):
+            cos_c = (l1 ** 2 + l2 ** 2 - dist ** 2) / (2 * l1 * l2)
+            angle_c = math.acos(cos_c)
+            angle_c_degrees = math.degrees(angle_c)
+
+            return angle_c_degrees
+
+        # Calculate E1
+        s0_s1_z = self.shoulder.z - self.elbow.z
+        s0_s1_x = self.shoulder.x - self.elbow.x
+        self.s0 = atan2(s0_s1_x, s0_s1_z) * (180 / pi) + 90
+
+        # Calculate S1  - Not correct!
+        s0_e1_z = self.shoulder.z - self.wrist_1.z
+        s0_e1_x = self.shoulder.x - self.wrist_1.x
+        s0_e1_y = self.shoulder.y - self.wrist_1.y
+        s0_e2_dist = math.sqrt(
+            s0_e1_z**2 + s0_e1_x**2 + s0_e1_y**2
+        )
+        self.e1 = calculate_joint_angle(baxter.upper_arm.length_m, baxter.forearm.length_m, s0_e2_dist)
+
+
 class Joint:
     color_values = {
         "yellow": ((20, 100, 100), (30, 255, 255)),
@@ -319,13 +345,15 @@ while running:
             if location is not None:
                 baxter.chest.x, baxter.chest.y, baxter.chest.z = location
                 baxter.chest.z = baxter.chest.z - baxter.chest.approximate_radius_m
-            baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z = baxter.chest.x - 0.22, baxter.chest.y, baxter.chest.z
+            baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z = baxter.chest.x + 0.28, baxter.chest.y, baxter.chest.z
         for joint in baxter.moving_joints:
             x, y = kinect.adjust_color_cords_to_depth_cords(joint.mean_cords[0], joint.mean_cords[1])
             location = kinect.get_location_of_joint(x, y, csp_frame)
             if location is not None:
                 joint.x, joint.y, joint.z = location
                 joint.z = joint.z - joint.approximate_radius_m
+
+        baxter.calculate_actuator_angles()
 
     key = cv2.waitKey(1)
     if key == 27:

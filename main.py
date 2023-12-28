@@ -108,7 +108,7 @@ class Kinect():
         x_cof = self.DEPTH_WIDTH / self.RGB_WIDTH*1.25
         y_cof = self.DEPTH_HEIGHT / self.RGB_HEIGHT*0.9
 
-        depth_x = int(self.DEPTH_WIDTH/2 + x_offset * x_cof) - 20
+        depth_x = int(self.DEPTH_WIDTH/2 + x_offset * x_cof) - 10
         depth_y = int(self.DEPTH_HEIGHT/2 + y_offset * y_cof)
 
         return depth_x, depth_y
@@ -135,7 +135,7 @@ class Kinect():
         )
 
         if joint.color_name == "yellow":
-            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 600, 0:self.RGB_WIDTH]
+            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH]
 
         new_mean_cords = self.get_pixel_average_cords(joint.pixel_mask)
         joint.mean_cords = new_mean_cords if new_mean_cords is not None else joint.mean_cords
@@ -198,33 +198,79 @@ class Baxter:
 
     def calculate_actuator_angles(self):
         def calculate_joint_angle(l1, l2, dist):
-            cos_c = (l1 ** 2 + l2 ** 2 - dist ** 2) / (2 * l1 * l2)
-            angle_c = math.acos(cos_c)
-            angle_c_degrees = math.degrees(angle_c)
+            angle_c_degrees = None
 
-            return angle_c_degrees
+            try:
+                cos_c = (l1 ** 2 + l2 ** 2 - dist ** 2) / (2 * l1 * l2)
+                angle_c = math.acos(cos_c)
+                # angle_c_degrees = math.degrees(angle_c)
+            except ValueError:
+                pass
 
-        # Calculate E1
+            return angle_c
+
+        def calculate_triangle_angles(a1, a2, a3, b1, b2, b3, c1, c2, c3):
+            # Calculate vectors AB, BC, and CA
+            ab = [b1 - a1, b2 - a2, b3 - a3]
+            bc = [c1 - b1, c2 - b2, c3 - b3]
+            ca = [a1 - c1, a2 - c2, a3 - c3]
+
+            # # Calculate magnitudes of vectors AB, BC, and CA
+            mag_ab = math.sqrt(ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2)
+            mag_bc = math.sqrt(bc[0] ** 2 + bc[1] ** 2 + bc[2] ** 2)
+            mag_ca = math.sqrt(ca[0] ** 2 + ca[1] ** 2 + ca[2] ** 2)
+
+            return calculate_joint_angle(mag_ab, mag_bc, mag_ca,)
+
+        # Calculate S0
         s0_s1_z = self.shoulder.z - self.elbow.z
         s0_s1_x = self.shoulder.x - self.elbow.x
-        self.s0 = atan2(s0_s1_x, s0_s1_z) * (180 / pi) + 90
+        s0 = atan2(s0_s1_x, s0_s1_z)
+        if s0 and not math.isnan(s0):
+            self.s0 = s0 + 0.785  # 0.785 radians is 45 degrees
 
-        # Calculate S1  - Not correct!
-        s0_e1_z = self.shoulder.z - self.wrist_1.z
-        s0_e1_x = self.shoulder.x - self.wrist_1.x
-        s0_e1_y = self.shoulder.y - self.wrist_1.y
-        s0_e2_dist = math.sqrt(
-            s0_e1_z**2 + s0_e1_x**2 + s0_e1_y**2
+        # print(self.shoulder.x, self.shoulder.y, self.shoulder.z)
+        # print(self.elbow.x, self.elbow.y, self.elbow.z)
+        # print(self.wrist_1.x, self.wrist_1.y, self.wrist_1.z)
+        # print(self.wrist_2.x, self.wrist_2.y, self.wrist_2.z)
+
+        s1 = calculate_triangle_angles(
+            self.shoulder.x, self.shoulder.y - 50, self.shoulder.z,
+            self.shoulder.x, self.shoulder.y, self.shoulder.z,
+            self.elbow.x, self.elbow.y, self.elbow.z,
         )
-        self.e1 = calculate_joint_angle(baxter.upper_arm.length_m, baxter.forearm.length_m, s0_e2_dist)
+        if not math.isnan(s1):
+            self.s1 = s1 - 1.57  # 1.57 radians is 90 degrees
+
+        e1 = calculate_triangle_angles(
+            self.shoulder.x, self.shoulder.y, self.shoulder.z,
+            self.elbow.x, self.elbow.y, self.elbow.z,
+            self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
+        )
+        if not math.isnan(e1):
+            self.e1 = abs(e1 - 3.14)
+
+        w1 = calculate_triangle_angles(
+            self.elbow.x, self.elbow.y, self.elbow.z,
+            self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
+            self.wrist_2.x, self.wrist_2.y, self.wrist_2.z,
+        )
+        if not math.isnan(w1):
+            self.w1 = abs(w1 - 3.14)
+
+        print("self.s0:", math.degrees(self.s0))
+        print("self.s1:", math.degrees(self.s1))
+        print("self.e1:", math.degrees(self.e1))
+        print("self.w1:", math.degrees(self.w1))
+        print("-----------------------------------------")
 
 
 class Joint:
     color_values = {
-        "yellow": ((20, 100, 100), (30, 255, 255)),
+        "yellow": ((20, 120, 140), (35, 255, 255)),
         "blue": ((100, 100, 20), (150, 255, 255)),
-        "green": ((40, 100, 35), (91, 255, 255)),
-        "purple": ((105, 50, 120), (150, 100, 200)),
+        "green": ((40, 100, 50), (91, 255, 255)),
+        "purple": ((105, 50, 120), (150, 100, 160)),
     }
 
     def __init__(self, color_name: str, approximate_radius_m: float = 0):
@@ -250,7 +296,7 @@ class Limb:
 
 cv2.namedWindow("RGB stream")
 cv2.namedWindow("Depth stream")
-# cv2.namedWindow("Debug")
+cv2.namedWindow("Debug")
 
 kinect = Kinect()
 baxter = Baxter()
@@ -270,7 +316,7 @@ while running:
             kinect.update_joint_mean_cords(baxter.chest)
         elif any((baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z)):
             baxter.shoulder.mean_cords = (
-                baxter.chest.mean_cords[0] + 220,
+                baxter.chest.mean_cords[0] + 180,
                 baxter.chest.mean_cords[1],
             )
         for joint in baxter.moving_joints:
@@ -290,14 +336,15 @@ while running:
             if any(limb.start_joint.mean_cords) and any(limb.end_joint.mean_cords):
                 cv2.line(color_frame, limb.end_joint.mean_cords, limb.start_joint.mean_cords, color=(0, 0, 255), thickness=3)
 
-        # green_mask = [j for j in kinect.joints if j.color_name == "green"][0].pixel_mask
-        # green_frame = cv2.bitwise_and(green_mask, green_mask, mask=green_mask)
+        debug_mask = baxter.chest.pixel_mask
+        debug_frame = cv2.bitwise_and(debug_mask, debug_mask, mask=debug_mask)
+        debug_frame = cv2.resize(debug_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
 
         kinect.color_frame = color_frame
 
         color_frame = cv2.resize(color_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
         cv2.imshow("RGB stream", color_frame)
-        # cv2.imshow("Debug", green_frame)
+        cv2.imshow("Debug", debug_frame)
 
     if has_new_depth_frame:
         depth_frame = kinect.get_last_depth_frame()

@@ -1,4 +1,5 @@
 import ctypes
+import json
 import math
 from math import atan2, pi
 
@@ -135,7 +136,7 @@ class Kinect():
         )
 
         if joint.color_name == "yellow":
-            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH]
+            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH-500]
 
         new_mean_cords = self.get_pixel_average_cords(joint.pixel_mask)
         joint.mean_cords = new_mean_cords if new_mean_cords is not None else joint.mean_cords
@@ -336,7 +337,7 @@ while running:
             if any(limb.start_joint.mean_cords) and any(limb.end_joint.mean_cords):
                 cv2.line(color_frame, limb.end_joint.mean_cords, limb.start_joint.mean_cords, color=(0, 0, 255), thickness=3)
 
-        debug_mask = baxter.chest.pixel_mask
+        debug_mask = baxter.elbow.pixel_mask
         debug_frame = cv2.bitwise_and(debug_mask, debug_mask, mask=debug_mask)
         debug_frame = cv2.resize(debug_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
 
@@ -401,6 +402,13 @@ while running:
                 joint.z = joint.z - joint.approximate_radius_m
 
         baxter.calculate_actuator_angles()
+        with open("angle_data.txt", 'w') as file:
+            file.write(json.dumps({
+                "right_s0": baxter.s0,
+                "right_s1": baxter.s1,
+                "right_e1": baxter.e1,
+                "right_w1": baxter.w1,
+            }))
 
     key = cv2.waitKey(1)
     if key == 27:

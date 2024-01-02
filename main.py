@@ -137,6 +137,8 @@ class Kinect():
 
         if joint.color_name == "yellow":
             joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH-500]
+        elif joint.color_name == "purple":
+            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT, 0:self.RGB_WIDTH]
 
         new_mean_cords = self.get_pixel_average_cords(joint.pixel_mask)
         joint.mean_cords = new_mean_cords if new_mean_cords is not None else joint.mean_cords
@@ -197,32 +199,80 @@ class Baxter:
         self.w1 = 0
         self.w2 = 0
 
+    def calculate_ik(self, ee_x, ee_y, ee_z):
+        """
+        We are using the trigonometric method. There is a triangle abc
+        ab is the upper ar
+        bc the lower arm
+        ac the distance between the shoulder and EE
+        """
+        angles = {
+            'right_s0': 0,
+            'right_s1': 0,
+            'right_e0': 0,
+            'right_e1': 0,
+            'right_w0': 0,
+            'right_w1': 0,
+            'right_w2': 0
+        }
+
+        s0_z = self.shoulder.z - ee_z
+        s0_x = self.shoulder.x - ee_x
+        s0 = atan2(s0_x, s0_z) + 0.785  # 0.785 radians is 45 degrees
+        if s0 and not math.isnan(s0):
+            angles["right_s0"] = s0
+
+        ac = [
+            self.shoulder.x - ee_x,
+            self.shoulder.y - ee_y,
+            self.shoulder.z - ee_z,
+        ]
+        ac = math.sqrt(ac[0] ** 2 + ac[1] ** 2 + ac[2] ** 2)
+        ab = 0.4
+        bc = 0.65
+
+        e1 = 3.14 - self.calculate_joint_angle(ab, bc, ac)
+        alpha = self.calculate_joint_angle(ab, ac, bc)
+
+        alpha_prim = math.atan(
+            (ee_y - self.shoulder.y) / math.sqrt((ee_z - self.shoulder.z)**2 + (ee_x - self.shoulder.x)**2)
+        )
+
+        print(alpha, alpha_prim)
+        s1 = (alpha - alpha_prim) * -1
+
+        angles["right_e1"] = e1
+        angles["right_s1"] = s1
+
+        return angles
+
+    @ staticmethod
+    def calculate_joint_angle(l1, l2, dist):
+        angle_c = 0
+
+        try:
+            cos_c = (l1 ** 2 + l2 ** 2 - dist ** 2) / (2 * l1 * l2)
+            angle_c = math.acos(cos_c)
+            # angle_c_degrees = math.degrees(angle_c)
+        except ValueError:
+            pass
+
+        return angle_c
+
+    def calculate_triangle_angles(self, a1, a2, a3, b1, b2, b3, c1, c2, c3):
+        # Calculate vectors AB, BC, and CA
+        ab = [b1 - a1, b2 - a2, b3 - a3]
+        bc = [c1 - b1, c2 - b2, c3 - b3]
+        ca = [a1 - c1, a2 - c2, a3 - c3]
+
+        # # Calculate magnitudes of vectors AB, BC, and CA
+        mag_ab = math.sqrt(ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2)
+        mag_bc = math.sqrt(bc[0] ** 2 + bc[1] ** 2 + bc[2] ** 2)
+        mag_ca = math.sqrt(ca[0] ** 2 + ca[1] ** 2 + ca[2] ** 2)
+
+        return self.calculate_joint_angle(mag_ab, mag_bc, mag_ca, )
+
     def calculate_actuator_angles(self):
-        def calculate_joint_angle(l1, l2, dist):
-            angle_c_degrees = None
-
-            try:
-                cos_c = (l1 ** 2 + l2 ** 2 - dist ** 2) / (2 * l1 * l2)
-                angle_c = math.acos(cos_c)
-                # angle_c_degrees = math.degrees(angle_c)
-            except ValueError:
-                pass
-
-            return angle_c
-
-        def calculate_triangle_angles(a1, a2, a3, b1, b2, b3, c1, c2, c3):
-            # Calculate vectors AB, BC, and CA
-            ab = [b1 - a1, b2 - a2, b3 - a3]
-            bc = [c1 - b1, c2 - b2, c3 - b3]
-            ca = [a1 - c1, a2 - c2, a3 - c3]
-
-            # # Calculate magnitudes of vectors AB, BC, and CA
-            mag_ab = math.sqrt(ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2)
-            mag_bc = math.sqrt(bc[0] ** 2 + bc[1] ** 2 + bc[2] ** 2)
-            mag_ca = math.sqrt(ca[0] ** 2 + ca[1] ** 2 + ca[2] ** 2)
-
-            return calculate_joint_angle(mag_ab, mag_bc, mag_ca,)
-
         # Calculate S0
         s0_s1_z = self.shoulder.z - self.elbow.z
         s0_s1_x = self.shoulder.x - self.elbow.x
@@ -235,7 +285,7 @@ class Baxter:
         # print(self.wrist_1.x, self.wrist_1.y, self.wrist_1.z)
         # print(self.wrist_2.x, self.wrist_2.y, self.wrist_2.z)
 
-        s1 = calculate_triangle_angles(
+        s1 = self.calculate_triangle_angles(
             self.shoulder.x, self.shoulder.y - 50, self.shoulder.z,
             self.shoulder.x, self.shoulder.y, self.shoulder.z,
             self.elbow.x, self.elbow.y, self.elbow.z,
@@ -243,7 +293,7 @@ class Baxter:
         if not math.isnan(s1):
             self.s1 = s1 - 1.57  # 1.57 radians is 90 degrees
 
-        e1 = calculate_triangle_angles(
+        e1 = self.calculate_triangle_angles(
             self.shoulder.x, self.shoulder.y, self.shoulder.z,
             self.elbow.x, self.elbow.y, self.elbow.z,
             self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
@@ -251,7 +301,7 @@ class Baxter:
         if not math.isnan(e1):
             self.e1 = abs(e1 - 3.14)
 
-        w1 = calculate_triangle_angles(
+        w1 = self.calculate_triangle_angles(
             self.elbow.x, self.elbow.y, self.elbow.z,
             self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
             self.wrist_2.x, self.wrist_2.y, self.wrist_2.z,
@@ -259,6 +309,7 @@ class Baxter:
         if not math.isnan(w1):
             self.w1 = abs(w1 - 3.14)
 
+        print("-----------------------------------------")
         print("self.s0:", math.degrees(self.s0))
         print("self.s1:", math.degrees(self.s1))
         print("self.e1:", math.degrees(self.e1))
@@ -268,10 +319,11 @@ class Baxter:
 
 class Joint:
     color_values = {
-        "yellow": ((20, 120, 140), (35, 255, 255)),
-        "blue": ((100, 100, 20), (150, 255, 255)),
-        "green": ((40, 100, 50), (91, 255, 255)),
-        "purple": ((105, 50, 120), (150, 100, 160)),
+        "yellow": ((30, 70, 140), (35, 255, 255)),
+        "blue": ((100, 120, 20), (150, 255, 255)),
+        "green": ((45, 80, 105), (91, 255, 255)),
+        "purple": ((105, 40, 120), (150, 100, 160)),
+        "orange": ((10, 110, 160), (30, 255, 255)),
     }
 
     def __init__(self, color_name: str, approximate_radius_m: float = 0):
@@ -301,6 +353,7 @@ cv2.namedWindow("Debug")
 
 kinect = Kinect()
 baxter = Baxter()
+ee = Joint(color_name="orange")
 
 running = True
 while running:
@@ -323,6 +376,12 @@ while running:
         for joint in baxter.moving_joints:
             kinect.update_joint_mean_cords(joint)
 
+        # For finding the end effector
+        kinect.update_joint_mean_cords(ee)
+        cv2.circle(
+            color_frame, ee.mean_cords, radius=5, color=(0, 0, 255), thickness=-1
+        )
+
         # Visualize the limbs and joints
         for limb in baxter.limbs:
             if any(limb.start_joint.mean_cords):
@@ -337,7 +396,7 @@ while running:
             if any(limb.start_joint.mean_cords) and any(limb.end_joint.mean_cords):
                 cv2.line(color_frame, limb.end_joint.mean_cords, limb.start_joint.mean_cords, color=(0, 0, 255), thickness=3)
 
-        debug_mask = baxter.elbow.pixel_mask
+        debug_mask = baxter.wrist_2.pixel_mask
         debug_frame = cv2.bitwise_and(debug_mask, debug_mask, mask=debug_mask)
         debug_frame = cv2.resize(debug_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
 
@@ -394,6 +453,7 @@ while running:
                 baxter.chest.x, baxter.chest.y, baxter.chest.z = location
                 baxter.chest.z = baxter.chest.z - baxter.chest.approximate_radius_m
             baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z = baxter.chest.x + 0.28, baxter.chest.y, baxter.chest.z
+
         for joint in baxter.moving_joints:
             x, y = kinect.adjust_color_cords_to_depth_cords(joint.mean_cords[0], joint.mean_cords[1])
             location = kinect.get_location_of_joint(x, y, csp_frame)
@@ -402,12 +462,35 @@ while running:
                 joint.z = joint.z - joint.approximate_radius_m
 
         baxter.calculate_actuator_angles()
+
+        # For EE
+        x, y = kinect.adjust_color_cords_to_depth_cords(ee.mean_cords[0], ee.mean_cords[1])
+        location = kinect.get_location_of_joint(x, y, csp_frame)
+        if location is not None:
+            ee.x, ee.y, ee.z = location
+            ee.z = ee.z - ee.approximate_radius_m
+
+        goal_angles = baxter.calculate_ik(ee.x, ee.y, ee.z)
+
+        # Used by the server to send data to baxter
         with open("angle_data.txt", 'w') as file:
             file.write(json.dumps({
-                "right_s0": baxter.s0,
-                "right_s1": baxter.s1,
-                "right_e1": baxter.e1,
-                "right_w1": baxter.w1,
+                "current_angles": {
+                    "right_s0": baxter.s0,
+                    "right_s1": baxter.s1 * -1,
+                    "right_e1": baxter.e1,
+                    "right_w1": baxter.w1,
+                },
+                "goal_angles": goal_angles,
+                # "goal_angles": {
+                #     'right_s0': 0,
+                #     'right_s1': 0,
+                #     'right_e0': 0,
+                #     'right_e1': 0,
+                #     'right_w0': 0,
+                #     'right_w1': 0,
+                #     'right_w2': 0
+                # },
             }))
 
     key = cv2.waitKey(1)

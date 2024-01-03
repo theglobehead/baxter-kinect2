@@ -8,6 +8,8 @@ import numpy as np
 from pykinect2 import PyKinectV2
 from pykinect2 import PyKinectRuntime
 
+from models.ik_solver import IkSolver
+
 class Kinect():
     """ Offers some more functionality and access via the
         PyKinect2 interface """
@@ -199,58 +201,24 @@ class Baxter:
         self.w1 = 0
         self.w2 = 0
 
-    def calculate_ik(self, ee_x, ee_y, ee_z):
-        """
-        We are using the trigonometric method. There is a triangle abc
-        ab is the upper ar
-        bc the lower arm
-        ac the distance between the shoulder and EE
-        """
-        angles = {
-            'right_s0': 0,
-            'right_s1': 0,
-            'right_e0': 0,
-            'right_e1': 0,
-            'right_w0': 0,
-            'right_w1': 0,
-            'right_w2': 0
-        }
+    def calculate_target_for_ik_2d(self, ee_x, ee_y, ee_z):
+        target_y = self.shoulder.y - ee_y
 
+        ee_x = self.shoulder.x - ee_x
+        ee_z = self.shoulder.z - ee_z
+
+        target_x = math.sqrt(ee_x**2 + ee_z**2)
+
+        return target_y, target_x
+
+    def calculate_ik_for_s0(self, ee_x, ee_y, ee_z):
         s0_z = self.shoulder.z - ee_z
         s0_x = self.shoulder.x - ee_x
         s0 = atan2(s0_x, s0_z) + 0.785  # 0.785 radians is 45 degrees
-        if s0 and not math.isnan(s0):
-            angles["right_s0"] = s0
+        if not s0 or math.isnan(s0):
+            s0 = 0
 
-        ac = [
-            self.shoulder.x - ee_x,
-            self.shoulder.y - ee_y,
-            self.shoulder.z - ee_z,
-        ]
-        ac = math.sqrt(ac[0] ** 2 + ac[1] ** 2 + ac[2] ** 2)
-        ab = 0.36
-        bc = 0.62
-
-        e1 = 3.14 - self.calculate_joint_angle(ab, bc, ac)
-        alpha = self.calculate_joint_angle(ab, ac, bc)
-
-        alpha_prim = math.atan(
-            (ee_y - self.shoulder.y) / math.sqrt((ee_z - self.shoulder.z)**2 + (ee_x - self.shoulder.x)**2)
-        ) * -1
-
-        print("aaa", alpha, alpha_prim)
-        s1 = (alpha - alpha_prim) * -1
-
-        angles["right_e1"] = e1
-        angles["right_s1"] = s1
-
-        print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-        print("deltax:", self.shoulder.x - ee_x)
-        print("deltay:", self.shoulder.y - ee_y)
-        print("deltaz:", self.shoulder.z - ee_z)
-        print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-
-        return angles
+        return s0
 
     @ staticmethod
     def calculate_joint_angle(l1, l2, dist):
@@ -307,13 +275,25 @@ class Baxter:
         if not math.isnan(e1):
             self.e1 = abs(e1 - 3.14)
 
-        w1 = self.calculate_triangle_angles(
+        e1_abs = self.calculate_triangle_angles(
+            self.elbow.x, self.elbow.y - 50, self.shoulder.z,
             self.elbow.x, self.elbow.y, self.elbow.z,
+            self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
+        )
+
+        w1_abs = self.calculate_triangle_angles(
+            self.wrist_1.x, self.wrist_1.y - 50, self.wrist_1.z,
             self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
             self.wrist_2.x, self.wrist_2.y, self.wrist_2.z,
         )
-        if not math.isnan(w1):
-            self.w1 = abs(w1 - 3.14)
+
+        if not math.isnan(w1_abs):
+            self.w1 = (w1_abs - e1_abs) * -1
+
+        # print("@@@@@@@@@@@@@@@@@@@@@@")
+        # print("e1_abs:", math.degrees(e1_abs))
+        # print("w1_abs:", math.degrees(w1_abs))
+        # print("@@@@@@@@@@@@@@@@@@@@@@")
 
         print("-----------------------------------------")
         print("self.s0:", math.degrees(self.s0))
@@ -325,10 +305,10 @@ class Baxter:
 
 class Joint:
     color_values = {
-        "yellow": ((20, 70, 90), (35, 255, 255)),
-        "blue": ((100, 200, 00), (150, 255, 255)),
-        "green": ((45, 80, 65), (91, 255, 255)),
-        "purple": ((90, 60, 115), (150, 75, 135)),
+        "yellow": ((20, 100, 100), (35, 255, 255)),
+        "blue": ((100, 100, 00), (150, 255, 255)),
+        "green": ((45, 50, 105), (91, 255, 255)),
+        "purple": ((90, 60, 115), (150, 175, 195)),
         "orange": ((10, 110, 160), (20, 255, 255)),
     }
 
@@ -402,7 +382,7 @@ while running:
             if any(limb.start_joint.mean_cords) and any(limb.end_joint.mean_cords):
                 cv2.line(color_frame, limb.end_joint.mean_cords, limb.start_joint.mean_cords, color=(0, 0, 255), thickness=3)
 
-        debug_mask = baxter.chest.pixel_mask
+        debug_mask = baxter.wrist_2.pixel_mask
         debug_frame = cv2.bitwise_and(debug_mask, debug_mask, mask=debug_mask)
         debug_frame = cv2.resize(debug_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
 
@@ -476,7 +456,19 @@ while running:
             ee.x, ee.y, ee.z = location
             ee.z = ee.z - ee.approximate_radius_m
 
-        goal_angles = baxter.calculate_ik(ee.x, ee.y, ee.z)
+        right_s0 = baxter.calculate_ik_for_s0(ee_x=ee.x, ee_y=ee.y, ee_z=ee.z)
+        target_point = baxter.calculate_target_for_ik_2d(ee_x=ee.x, ee_y=ee.y, ee_z=ee.z)
+        right_s1, right_e1, right_w1 = IkSolver.solve_ik_3dof(np.array(list(target_point)))
+
+        goal_angles = {
+            'right_s0': right_s0,
+            'right_s1': right_s1,
+            'right_e0': 0,
+            'right_e1': right_e1,
+            'right_w0': 0,
+            'right_w1': right_w1,
+            'right_w2': 0
+        }
 
         # Used by the server to send data to baxter
         with open("angle_data.txt", 'w') as file:
@@ -488,15 +480,6 @@ while running:
                     "right_w1": baxter.w1,
                 },
                 "goal_angles": goal_angles,
-                # "goal_angles": {
-                #     'right_s0': 0,
-                #     'right_s1': 0,
-                #     'right_e0': 0,
-                #     'right_e1': 0,
-                #     'right_w0': 0,
-                #     'right_w1': 0,
-                #     'right_w2': 0
-                # },
             }))
 
     key = cv2.waitKey(1)

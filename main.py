@@ -138,7 +138,7 @@ class Kinect():
         if joint.color_name == "yellow":
             joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH-500]
         elif joint.color_name == "purple":
-            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT, 0:self.RGB_WIDTH]
+            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT, 0:self.RGB_WIDTH - 800]
 
         new_mean_cords = self.get_pixel_average_cords(joint.pixel_mask)
         joint.mean_cords = new_mean_cords if new_mean_cords is not None else joint.mean_cords
@@ -228,21 +228,27 @@ class Baxter:
             self.shoulder.z - ee_z,
         ]
         ac = math.sqrt(ac[0] ** 2 + ac[1] ** 2 + ac[2] ** 2)
-        ab = 0.4
-        bc = 0.65
+        ab = 0.36
+        bc = 0.62
 
         e1 = 3.14 - self.calculate_joint_angle(ab, bc, ac)
         alpha = self.calculate_joint_angle(ab, ac, bc)
 
         alpha_prim = math.atan(
             (ee_y - self.shoulder.y) / math.sqrt((ee_z - self.shoulder.z)**2 + (ee_x - self.shoulder.x)**2)
-        )
+        ) * -1
 
-        print(alpha, alpha_prim)
+        print("aaa", alpha, alpha_prim)
         s1 = (alpha - alpha_prim) * -1
 
         angles["right_e1"] = e1
         angles["right_s1"] = s1
+
+        print("@@@@@@@@@@@@@@@@@@@@@@@@@")
+        print("deltax:", self.shoulder.x - ee_x)
+        print("deltay:", self.shoulder.y - ee_y)
+        print("deltaz:", self.shoulder.z - ee_z)
+        print("@@@@@@@@@@@@@@@@@@@@@@@@@")
 
         return angles
 
@@ -319,11 +325,11 @@ class Baxter:
 
 class Joint:
     color_values = {
-        "yellow": ((30, 70, 140), (35, 255, 255)),
-        "blue": ((100, 120, 20), (150, 255, 255)),
-        "green": ((45, 80, 105), (91, 255, 255)),
-        "purple": ((105, 40, 120), (150, 100, 160)),
-        "orange": ((10, 110, 160), (30, 255, 255)),
+        "yellow": ((20, 70, 90), (35, 255, 255)),
+        "blue": ((100, 200, 00), (150, 255, 255)),
+        "green": ((45, 80, 65), (91, 255, 255)),
+        "purple": ((90, 60, 115), (150, 75, 135)),
+        "orange": ((10, 110, 160), (20, 255, 255)),
     }
 
     def __init__(self, color_name: str, approximate_radius_m: float = 0):
@@ -396,7 +402,7 @@ while running:
             if any(limb.start_joint.mean_cords) and any(limb.end_joint.mean_cords):
                 cv2.line(color_frame, limb.end_joint.mean_cords, limb.start_joint.mean_cords, color=(0, 0, 255), thickness=3)
 
-        debug_mask = baxter.wrist_2.pixel_mask
+        debug_mask = baxter.chest.pixel_mask
         debug_frame = cv2.bitwise_and(debug_mask, debug_mask, mask=debug_mask)
         debug_frame = cv2.resize(debug_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
 

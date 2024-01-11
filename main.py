@@ -138,9 +138,11 @@ class Kinect():
         )
 
         if joint.color_name == "yellow":
-            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH-500]
+            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT - 100, 0:self.RGB_WIDTH-200]
         elif joint.color_name == "purple":
             joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT, 0:self.RGB_WIDTH - 800]
+        elif joint.color_name == "blue":
+            joint.pixel_mask = joint.pixel_mask[0:self.RGB_HEIGHT, 0:self.RGB_WIDTH - 000]
 
         new_mean_cords = self.get_pixel_average_cords(joint.pixel_mask)
         joint.mean_cords = new_mean_cords if new_mean_cords is not None else joint.mean_cords
@@ -254,10 +256,10 @@ class Baxter:
         if s0 and not math.isnan(s0):
             self.s0 = s0 + 0.785  # 0.785 radians is 45 degrees
 
-        # print(self.shoulder.x, self.shoulder.y, self.shoulder.z)
-        # print(self.elbow.x, self.elbow.y, self.elbow.z)
-        # print(self.wrist_1.x, self.wrist_1.y, self.wrist_1.z)
-        # print(self.wrist_2.x, self.wrist_2.y, self.wrist_2.z)
+        # # print(self.shoulder.x, self.shoulder.y, self.shoulder.z)
+        # # print(self.elbow.x, self.elbow.y, self.elbow.z)
+        # # print(self.wrist_1.x, self.wrist_1.y, self.wrist_1.z)
+        # # print(self.wrist_2.x, self.wrist_2.y, self.wrist_2.z)
 
         s1 = self.calculate_triangle_angles(
             self.shoulder.x, self.shoulder.y - 50, self.shoulder.z,
@@ -267,13 +269,43 @@ class Baxter:
         if not math.isnan(s1):
             self.s1 = s1 - 1.57  # 1.57 radians is 90 degrees
 
-        e1 = self.calculate_triangle_angles(
-            self.shoulder.x, self.shoulder.y, self.shoulder.z,
-            self.elbow.x, self.elbow.y, self.elbow.z,
-            self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
-        )
+        # # print(self.elbow.y, self.shoulder.y)
+        # # print(self.elbow.x, self.shoulder.x)
+        # # print(self.elbow.z, self.shoulder.z)
+#
+        e1_line = [self.shoulder.y - self.wrist_1.y, self.shoulder.x - self.wrist_1.x, self.shoulder.z - self.wrist_1.z]
+        upper_arm_line = [self.shoulder.y - self.elbow.y, self.shoulder.x - self.elbow.x, self.shoulder.z - self.elbow.z]
+        lower_arm_line = [self.wrist_1.y - self.elbow.y, self.wrist_1.x - self.elbow.x, self.wrist_1.z - self.elbow.z]
+        mag_ca = math.sqrt(e1_line[0] ** 2 + e1_line[1] ** 2 + e1_line[2] ** 2)
+        mag_ua = math.sqrt(upper_arm_line[0] ** 2 + upper_arm_line[1] ** 2 + upper_arm_line[2] ** 2)
+        mag_la = math.sqrt(lower_arm_line[0] ** 2 + lower_arm_line[1] ** 2 + lower_arm_line[2] ** 2)
+
+        mag_ca = round(mag_ca, 3)
+        mag_ua = round(mag_ua, 3)
+        mag_la = round(mag_la, 3)
+
+        # # print(e1_line, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+        print(mag_ua, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+        print(mag_la, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+        print(mag_ca, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+        if mag_ca >= mag_ua + mag_la:
+            mag_ca = mag_ua + mag_la - 0.01
+        print(mag_ca, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+
+        e1 = self.calculate_joint_angle(mag_la, mag_ua, mag_ca)
+        # print(e1, " e1   @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+
+        # e1 = self.calculate_joint_angle(0.48, 0.47, mag_ca) # self.calculate_triangle_angles(
+        #    self.shoulder.x, self.shoulder.y, self.shoulder.z,
+        #    self.elbow.x, self.elbow.y, self.elbow.z,
+        #    self.wrist_1.x, self.wrist_1.y, self.wrist_1.z,
+        #)
+
         if not math.isnan(e1):
-            self.e1 = abs(e1 - 3.14)
+            # print(mag_ca, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            e1 = 3.14 - e1
+            e1 -= (1.57 - e1)*0.25
+            self.e1 = e1
 
         e1_abs = self.calculate_triangle_angles(
             self.elbow.x, self.elbow.y - 50, self.shoulder.z,
@@ -290,25 +322,25 @@ class Baxter:
         if not math.isnan(w1_abs):
             self.w1 = (w1_abs - e1_abs) * -1
 
-        # print("@@@@@@@@@@@@@@@@@@@@@@")
-        # print("e1_abs:", math.degrees(e1_abs))
-        # print("w1_abs:", math.degrees(w1_abs))
-        # print("@@@@@@@@@@@@@@@@@@@@@@")
+        # # print("@@@@@@@@@@@@@@@@@@@@@@")
+        # # print("e1_abs:", math.degrees(e1_abs))
+        # # print("w1_abs:", math.degrees(w1_abs))
+        # # print("@@@@@@@@@@@@@@@@@@@@@@")
 
-        print("-----------------------------------------")
-        print("self.s0:", math.degrees(self.s0))
-        print("self.s1:", math.degrees(self.s1))
-        print("self.e1:", math.degrees(self.e1))
-        print("self.w1:", math.degrees(self.w1))
-        print("-----------------------------------------")
+        # print("-----------------------------------------")
+        # print("self.s0:", math.degrees(self.s0))
+        # print("self.s1:", math.degrees(self.s1))
+        # print("self.e1:", math.degrees(self.e1))
+        # print("self.w1:", math.degrees(self.w1))
+        # print("-----------------------------------------")
 
 
 class Joint:
     color_values = {
-        "yellow": ((20, 100, 100), (35, 255, 255)),
-        "blue": ((100, 100, 00), (150, 255, 255)),
+        "yellow": ((25, 130, 130), (45, 255, 255)),
+        "blue": ((100, 100, 80), (150, 255, 255)),
         "green": ((45, 50, 105), (91, 255, 255)),
-        "purple": ((90, 60, 115), (150, 175, 195)),
+        "purple": ((90, 60, 155), (150, 175, 255)),
         "orange": ((10, 110, 160), (20, 255, 255)),
     }
 
@@ -356,7 +388,7 @@ while running:
             kinect.update_joint_mean_cords(baxter.chest)
         elif any((baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z)):
             baxter.shoulder.mean_cords = (
-                baxter.chest.mean_cords[0] + 180,
+                baxter.chest.mean_cords[0] + 140,
                 baxter.chest.mean_cords[1],
             )
         for joint in baxter.moving_joints:
@@ -382,7 +414,7 @@ while running:
             if any(limb.start_joint.mean_cords) and any(limb.end_joint.mean_cords):
                 cv2.line(color_frame, limb.end_joint.mean_cords, limb.start_joint.mean_cords, color=(0, 0, 255), thickness=3)
 
-        debug_mask = baxter.wrist_2.pixel_mask
+        debug_mask = baxter.elbow.pixel_mask
         debug_frame = cv2.bitwise_and(debug_mask, debug_mask, mask=debug_mask)
         debug_frame = cv2.resize(debug_frame, (int(kinect.RGB_WIDTH/2), int(kinect.RGB_HEIGHT/2)))
 
@@ -438,11 +470,13 @@ while running:
             if location is not None:
                 baxter.chest.x, baxter.chest.y, baxter.chest.z = location
                 baxter.chest.z = baxter.chest.z - baxter.chest.approximate_radius_m
-            baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z = baxter.chest.x + 0.28, baxter.chest.y, baxter.chest.z
+            baxter.shoulder.x, baxter.shoulder.y, baxter.shoulder.z = baxter.chest.x + 0.28, baxter.chest.y - 0.05, baxter.chest.z
 
         for joint in baxter.moving_joints:
             x, y = kinect.adjust_color_cords_to_depth_cords(joint.mean_cords[0], joint.mean_cords[1])
             location = kinect.get_location_of_joint(x, y, csp_frame)
+            # print(location, joint.color_name ,"-----------------------------------------------------------")
+
             if location is not None:
                 joint.x, joint.y, joint.z = location
                 joint.z = joint.z - joint.approximate_radius_m
@@ -460,6 +494,8 @@ while running:
         target_point = baxter.calculate_target_for_ik_2d(ee_x=ee.x, ee_y=ee.y, ee_z=ee.z)
         right_s1, right_e1, right_w1 = IkSolver.solve_ik_3dof(np.array(list(target_point)))
 
+        # print("wut###################", baxter.chest.x, baxter.chest.y, baxter.chest.z)
+
         goal_angles = {
             'right_s0': right_s0,
             'right_s1': right_s1,
@@ -474,7 +510,7 @@ while running:
         with open("angle_data.txt", 'w') as file:
             file.write(json.dumps({
                 "current_angles": {
-                    "right_s0": baxter.s0,
+                    "right_s0": baxter.s0 - 0.2,  # Account for known error
                     "right_s1": baxter.s1 * -1,
                     "right_e1": baxter.e1,
                     "right_w1": baxter.w1,
